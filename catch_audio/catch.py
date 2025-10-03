@@ -6,12 +6,40 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
-SERIAL_PORT = 'COM14'       # Cổng serial Arduino
+SERIAL_PORT = 'COM14'
 BAUD_RATE = 115200
 SAMPLE_RATE = 8000
 RECORD_SECONDS = 10
 
-OUTPUT_DIR = r'D:\Sync_Drive\Naiscorp\mic_unidirector\catch_audio'
+OUTPUT_DIR = r'D:\Sync_Drive\Naiscorp\mic_unidirector\catch_audio\audio'
+PLOT_DIR = os.path.join(OUTPUT_DIR, 'plots')  # Thư mục con để lưu ảnh plot
+
+def plot_full_waveform(filename):
+    # Đọc file WAV
+    with wave.open(filename, 'rb') as wav_file:
+        n_frames = wav_file.getnframes()
+        framerate = wav_file.getframerate()
+        frames = wav_file.readframes(n_frames)
+
+    audio_data = np.frombuffer(frames, dtype=np.uint8)
+    time_axis = np.linspace(0, n_frames / framerate, num=n_frames)
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.plot(time_axis, audio_data, color='blue')
+    ax.set_title(f'Full Waveform - {os.path.basename(filename)}')
+    ax.set_xlabel('Thời gian (s)')
+    ax.set_ylabel('Biên độ')
+    ax.grid(True)
+
+    # Mặc định matplotlib hỗ trợ zoom, pan
+    plt.show()
+
+    # Lưu ảnh plot dưới file PNG trong thư mục PLOT_DIR
+    if not os.path.exists(PLOT_DIR):
+        os.makedirs(PLOT_DIR)
+    plot_file = os.path.join(PLOT_DIR, os.path.basename(filename).replace('.wav', '.png'))
+    fig.savefig(plot_file)
+    print(f'Đã lưu đồ thị toàn bộ tại: {plot_file}')
 
 
 def main():
@@ -25,20 +53,9 @@ def main():
         print("Mở cổng serial, đợi Arduino khởi động...")
         time.sleep(2)
 
-        print("Bắt đầu thu dữ liệu và vẽ đồ thị realtime...")
+        print("Bắt đầu thu dữ liệu...")
         num_samples = SAMPLE_RATE * RECORD_SECONDS
         data = bytearray()
-
-        plt.ion()
-        fig, ax = plt.subplots()
-        x = np.arange(0, 200)  # Hiển thị 200 mẫu trong plot window
-        y = np.zeros(200)
-        line, = ax.plot(x, y)
-        ax.set_ylim(0, 255)
-        ax.set_xlim(0, len(x))
-        plt.title("Realtime audio waveform (8-bit PCM)")
-        plt.xlabel("Samples")
-        plt.ylabel("Amplitude")
 
         start_time = time.time()
 
@@ -46,21 +63,11 @@ def main():
             bytes_to_read = ser.in_waiting
             if bytes_to_read:
                 to_read = min(bytes_to_read, num_samples - len(data))
-                new_data = ser.read(to_read)
-                data += new_data
-
-                # Cập nhật plot với dữ liệu mới nhất
-                for b in new_data:
-                    y = np.append(y[1:], b)
-                line.set_ydata(y)
-                fig.canvas.draw()
-                fig.canvas.flush_events()
+                data += ser.read(to_read)
             else:
                 time.sleep(0.001)
 
         end_time = time.time()
-        plt.ioff()
-        plt.show()
 
         actual_record_time = end_time - start_time
         expected_record_time = len(data) / SAMPLE_RATE
@@ -78,6 +85,8 @@ def main():
             wav_file.writeframes(data)
 
         print("Hoàn tất.")
+
+    plot_full_waveform(output_file)
 
 
 if __name__ == '__main__':
